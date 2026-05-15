@@ -38,3 +38,7 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# ===== Developer Files (internal only) =====
+developers_files/
+.claude/

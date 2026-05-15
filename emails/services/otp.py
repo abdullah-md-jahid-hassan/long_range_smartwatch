@@ -1,35 +1,20 @@
-from core.choices import OtpPurpose
-from django.contrib.auth import get_user_model
+from otp.choices import OtpPurpose
 from django.template.loader import render_to_string
 from emails.tasks import send_email_task
-from emails.choices import (
-    EmailBodyType,
-    EmailPurpose,
-)
-from datetime import datetime
+from emails.choices import EmailBodyType, EmailPurpose
 
 
-User = get_user_model()
-
-def send_otp_email(
-        email: str, 
-        otp: str, 
-        otp_porous: OtpPurpose.choices = OtpPurpose.OTHER,
-        ):
+def send_otp_email(email: str, otp: str, otp_purpose: str = OtpPurpose.OTHER):
     send_email_task.delay(
-        subject=f"Your {otp_porous} OTP Code",
+        subject=f"Your OTP Code",
         to_emails=[email],
         body=render_to_string(
-            "emails/otp_email.html",
+            "otp_body.html",
             {
                 "otp": otp,
-                "porous": otp_porous,
-                "current_year": datetime.now().year,
-            }
+                "purpose": otp_purpose,
+            },
         ),
         body_type=EmailBodyType.HTML,
         purpose=EmailPurpose.OTP,
     )
-    
-
-

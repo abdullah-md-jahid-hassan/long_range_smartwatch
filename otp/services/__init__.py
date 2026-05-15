@@ -1,1 +1,1 @@
-from .otp import *
+from .otp import OTPService

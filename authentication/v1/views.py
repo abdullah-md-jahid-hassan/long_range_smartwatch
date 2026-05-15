@@ -1,47 +1,28 @@
 from rest_framework.views import APIView
 from rest_framework import status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
-from core.utils.response import error_response, success_response
-from authentication.services.password import change_password
-
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.throttling import AnonRateThrottle
-from rest_framework import status
-from authentication.serializers import (
-    RegisterSerializer,
-    LoginSerializer,
-)
-from django.conf import settings
 
-CONFIG = settings.CONFIG
+from core.utils.response import success_response, error_response
+from authentication.throttles import RegisterThrottle, LoginThrottle, ChangePasswordThrottle
+from authentication.v1.serializers import RegisterSerializer, LoginSerializer
+from authentication.services import change_password
 
-# Register endpoint
-class RegisterThrottle(AnonRateThrottle):
-    scope = "register"
-class ResisterView(APIView):
+
+class RegisterView(APIView):
     throttle_classes = [RegisterThrottle]
     permission_classes = [permissions.AllowAny]
-    serializer_class = RegisterSerializer
 
-    def post(self, request, *args, **kwargs):
-        """
-        Register endpoint:
-        - validates user data
-        - creates a new user
-        """
-        # Validate user data
+    def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
             return error_response(
-                message="Invalid user data",
+                message="Invalid registration data",
                 errors=serializer.errors,
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
-        
-        # Create a new user
-        user = serializer.save()
 
-        # Obtain JWT tokens
+        user = serializer.save()
         refresh = RefreshToken.for_user(user)
 
         return success_response(
@@ -54,76 +35,76 @@ class ResisterView(APIView):
             status_code=status.HTTP_201_CREATED,
         )
 
-# Strict throttle for login
-class LoginThrottle(AnonRateThrottle):
-    scope = "login"
+
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_classes = [LoginThrottle]
     permission_classes = [permissions.AllowAny]
-
-    def post(self, request, *args, **kwargs):
-        """
-        Login endpoint:
-        - validates credentials
-        - returns access + refresh tokens
-        - protected by throttle
-        """
-        return super().post(request, *args, **kwargs)
 
 
 class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return error_response(
+                message="Refresh token is required",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         try:
-            refresh_token = request.data["refresh"]
             token = RefreshToken(refresh_token)
             token.blacklist()
             return success_response(
-                message="Successfully logged out",
-                status_code=status.HTTP_205_RESET_CONTENT,
+                message="Logged out successfully",
+                status_code=status.HTTP_200_OK,
             )
-        except Exception:
+        except Exception as e:
             return error_response(
-                message="Invalid token",
-                errors=Exception,
+                message="Invalid or already blacklisted token",
+                errors=e,
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+
 
 class VerifyUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request):
+    def get(self, request):
         user = request.user
         return success_response(
             message="User verified successfully",
             data={
                 "id": user.id,
                 "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
             },
-            status_code=status.HTTP_200_OK,
         )
 
-class ChangePasswordThrottle(AnonRateThrottle):
-    scope = "change_password"
+
 class ChangePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [ChangePasswordThrottle]
+
     def post(self, request):
-        user = request.user
-        old_password = request.data["old_password"]
-        new_password = request.data["new_password"]
-        try:
-            user.check_password(old_password)
-        except Exception:
+        old_password = request.data.get("old_password")
+        new_password = request.data.get("new_password")
+
+        if not old_password or not new_password:
             return error_response(
-                message="Invalid old password",
-                errors=Exception,
+                message="Both old_password and new_password are required",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+
+        if not request.user.check_password(old_password):
+            return error_response(
+                message="Current password is incorrect",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            change_password(user, new_password)
+            change_password(request.user, new_password)
         except Exception as e:
             return error_response(
                 message="Password change failed",
@@ -131,4 +112,7 @@ class ChangePasswordView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-
+        return success_response(
+            message="Password changed successfully",
+            status_code=status.HTTP_200_OK,
+        )

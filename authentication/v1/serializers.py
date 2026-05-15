@@ -2,10 +2,11 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.password_validation import validate_password
-from otp.serializers import OtpVerifySerializer
+from otp.v1.serializers import OtpVerifySerializer
 from otp.choices import OtpPurpose
 
 User = get_user_model()
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -20,27 +21,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        # Verify OTP
         otp_data = validated_data.pop("otp_data")
         otp_data["purpose"] = OtpPurpose.REGISTRATION
         otp_verifier = OtpVerifySerializer(data=otp_data)
         otp_verifier.is_valid(raise_exception=True)
-        
+
         if not otp_verifier.verify():
             raise serializers.ValidationError("Invalid OTP")
 
-        # Create User
-        user = User.objects.create_user(**validated_data)
-        return user
+        return User.objects.create_user(**validated_data)
+
 
 class LoginSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
-
-        # add extra safe user info (optional)
         data["user"] = {
             "id": self.user.id,
             "email": self.user.email,
-            # "is_staff": self.user.is_staff,
         }
         return data
