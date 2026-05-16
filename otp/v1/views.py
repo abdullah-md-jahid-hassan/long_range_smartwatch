@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 
 from core.utils.response import success_response, error_response
-from core.utils.validator import validate_phone
+from core.utils.validators import validate_phone
 from otp.choices import OtpPurpose, OtpChannel
 from otp.services import OTPService
 from otp.services.rules import get_otp_rules

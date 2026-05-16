@@ -4,9 +4,12 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from core.utils.response import success_response, error_response
+from core.utils.general import get_or_400
 from authentication.throttles import RegisterThrottle, LoginThrottle, ChangePasswordThrottle
 from authentication.v1.serializers import RegisterSerializer, LoginSerializer
-from authentication.services import change_password
+from authentication.services import change_password, reset_password
+from otp.v1.serializers import OtpVerifySerializer
+from otp.choices import OtpPurpose
 
 
 class RegisterView(APIView):
@@ -80,6 +83,56 @@ class VerifyUserView(APIView):
                 "first_name": user.first_name,
                 "last_name": user.last_name,
             },
+        )
+
+
+class ResetPasswordView(APIView):
+    """
+    Complete a password reset after OTP verification.
+    Flow: POST /v1/otp/get-otp/ (purpose=password_reset) → POST /v1/auth/password/reset/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        status, data = get_or_400(
+            data=request.data,
+            keys=["email", "otp", "new_password"],
+            required=["email", "otp", "new_password"],
+        )
+        email = data["email"]
+        otp = data["otp"]
+        new_password = data["new_password"]
+
+        otp_serializer = OtpVerifySerializer(data={
+            "identifier": email,
+            "otp": otp,
+            "purpose": OtpPurpose.PASSWORD_RESET,
+        })
+        if not otp_serializer.is_valid():
+            return error_response(
+                message="Invalid OTP data",
+                errors=otp_serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not otp_serializer.verify():
+            return error_response(
+                message="Invalid or expired OTP",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            reset_password(email, new_password)
+        except Exception as e:
+            return error_response(
+                message="Password reset failed",
+                errors=e,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return success_response(
+            message="Password reset successfully",
+            status_code=status.HTTP_200_OK,
         )
 
 

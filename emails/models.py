@@ -1,9 +1,6 @@
 from django.db import models
+from emails.choices import EmailBodyType, EmailStatus
 
-from emails.choices import (
-    EmailBodyType,
-    EmailStatus,
-)
 
 class EmailLog(models.Model):
     to_emails = models.TextField()
@@ -16,5 +13,15 @@ class EmailLog(models.Model):
 
     status = models.CharField(max_length=255, choices=EmailStatus.choices, default=EmailStatus.SENT)
     try_count = models.IntegerField(default=1)
-    schedule_at = models.DateTimeField(auto_now_add=True)
-    sent_at = models.DateTimeField(blank=True, null=True)
+
+    schedule_at = models.DateTimeField(blank=True, null=True)
+    sent_at     = models.DateTimeField(blank=True, null=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Email Log'
+        verbose_name_plural = 'Email Logs'
+
+    def __str__(self):
+        return f"{self.subject} → {self.to_emails} [{self.status}]"

@@ -6,6 +6,7 @@ from authentication.v1.views import (
     LogoutView,
     VerifyUserView,
     ChangePasswordView,
+    ResetPasswordView,
 )
 
 app_name = "auth_v1"
@@ -18,4 +19,5 @@ urlpatterns = [
     path("token/verify/",    TokenVerifyView.as_view(),  name="token-verify"),
     path("verify/",          VerifyUserView.as_view(),   name="verify"),
     path("password/change/", ChangePasswordView.as_view(), name="password-change"),
+    path("password/reset/",  ResetPasswordView.as_view(),  name="password-reset"),
 ]

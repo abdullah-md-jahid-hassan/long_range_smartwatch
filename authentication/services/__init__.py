@@ -1,1 +1,1 @@
-from .password import change_password
+from .password import change_password, reset_password

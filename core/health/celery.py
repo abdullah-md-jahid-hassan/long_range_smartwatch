@@ -1,8 +1,8 @@
-import traceback
 from celery import current_app
 from kombu.exceptions import OperationalError
 from core.utils.health_response import health_ok_response, health_error_response
 from django.core.cache import cache
+
 
 def check_celery_worker():
     try:
@@ -28,24 +28,23 @@ def check_celery_worker():
 
         return health_ok_response(
             name="Celery Worker",
-            message=f"{worker_count} worker(s) active | {task_count} task(s) registered"
+            message=f"{worker_count} worker(s) active | {task_count} task(s) registered",
         )
 
     except OperationalError as e:
         return health_error_response(
             name="Celery Worker",
             message="Broker connection failed",
-            errors=str(e),
-            traceback=traceback.format_exc(),
+            errors=e,
         )
 
     except Exception as e:
         return health_error_response(
             name="Celery Worker",
-            message="Worker health error",
-            errors=str(e),
-            traceback=traceback.format_exc(),
+            message="Worker health check error",
+            errors=e,
         )
+
 
 def check_celery_beat():
     try:
@@ -54,18 +53,17 @@ def check_celery_beat():
         if not last_seen:
             return health_error_response(
                 name="Celery Beat",
-                message="Beat not running (no heartbeat)",
+                message="Beat not running (no heartbeat detected)",
             )
 
         return health_ok_response(
             name="Celery Beat",
-            message=f"Last heartbeat at {last_seen}"
+            message=f"Last heartbeat at {last_seen}",
         )
 
     except Exception as e:
         return health_error_response(
             name="Celery Beat",
-            message="Beat health error",
-            errors=str(e),
+            message="Beat health check error",
+            errors=e,
         )
-

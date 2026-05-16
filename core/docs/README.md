@@ -36,7 +36,7 @@ core/
 ├── response.py             # Standardized API response builders
 ├── services.py             # Health check service
 ├── tasks.py                # Celery tasks (heartbeat)
-├── validator.py            # Phone number validator
+├── validators.py            # Phone number validators
 ├── validators.py           # DataSerializer for type coercion
 ├── views.py                # HealthReportView
 └── urls.py                 # URL patterns
@@ -72,13 +72,13 @@ Each component returns either `{ "status": "healthy" }` or `{ "status": "unhealt
 
 ### Checked Components
 
-| Component | Method | What It Tests |
-|---|---|---|
-| **Database** | `check_database()` | Executes a simple query against the default DB |
-| **Redis** | `check_redis()` | Pings the Redis server via the singleton client |
-| **Email Service** | `check_email_service()` | Opens and closes an SMTP connection |
-| **Celery Worker** | `check_celery_worker()` | Inspects active Celery workers |
-| **Celery Beat** | `check_celery_beat()` | Reads the heartbeat key set by `beat_heartbeat` task |
+| Component         | Method                  | What It Tests                                        |
+| ----------------- | ----------------------- | ---------------------------------------------------- |
+| **Database**      | `check_database()`      | Executes a simple query against the default DB       |
+| **Redis**         | `check_redis()`         | Pings the Redis server via the singleton client      |
+| **Email Service** | `check_email_service()` | Opens and closes an SMTP connection                  |
+| **Celery Worker** | `check_celery_worker()` | Inspects active Celery workers                       |
+| **Celery Beat**   | `check_celery_beat()`   | Reads the heartbeat key set by `beat_heartbeat` task |
 
 ### Implementation
 
@@ -230,14 +230,14 @@ value = redis.get("my_key")
 
 ## 6. Validators & Generators
 
-### Phone Number Validation — `core.validator`
+### Phone Number Validation — `core.validators`
 
 **`validate_phone(phone_number, region=None)`**
 
 Validates international phone numbers using the `phonenumbers` library.
 
 ```python
-from core.validator import validate_phone
+from core.validators import validate_phone
 
 try:
     validate_phone("+8801712345678")

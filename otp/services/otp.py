@@ -172,7 +172,7 @@ class OTPService:
                     purpose=purpose,
                 )
             case OtpChannel.PHONE:
-                RuntimeError ("OTP not implemented for this channel")
+                raise NotImplementedError("SMS OTP channel is not yet implemented")
             case _:
                 raise ValueError("Invalid OTP channel")
     

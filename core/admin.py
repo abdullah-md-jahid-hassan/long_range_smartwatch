@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.contrib.admin.models import LogEntry
+from django.utils.html import format_html
 
 # Admin Logs
 class AdminLogEntry(LogEntry):
