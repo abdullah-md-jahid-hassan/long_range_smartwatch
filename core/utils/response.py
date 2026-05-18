@@ -45,6 +45,7 @@ def error_response(
     data=None,
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
     request=None,
+    exc: Exception | None = None,
 ):
     payload = {
         "success": False,
@@ -53,9 +54,11 @@ def error_response(
         "errors": _normalize_errors(errors),
     }
 
-    if settings.DEBUG and errors is not None:
+    # exc is the raw exception for debug tracing (separate from user-facing errors)
+    debug_target = exc if exc is not None else (errors if isinstance(errors, Exception) else None)
+    if settings.DEBUG and debug_target is not None:
         extra = {
-            "exception": errors.__class__.__name__,
+            "exception": debug_target.__class__.__name__,
             "traceback": traceback.format_exc(),
         }
         if request is not None:
