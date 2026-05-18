@@ -1,0 +1,214 @@
+# Utilities Reference
+
+---
+
+## Table of Contents
+
+- [core](#core)
+  - [utils/general.py](#utilsgeneralpy)
+  - [utils/generators.py](#utilsgeneratorspy)
+  - [utils/validators.py](#utilsvalidatorspy)
+  - [utils/query.py](#utilsquerypy)
+  - [utils/decorators.py](#utilsdecoratorspy)
+  - [utils/health_response.py](#utilshealth_responsepy)
+  - [utils/app_model_relate.py](#utilsapp_model_relatepy)
+  - [tasks.py](#coretaskspy)
+- [authentication](#authentication)
+  - [throttles.py](#authenticationthrottlespy)
+  - [managers/user.py](#authenticationmanagersusерpy)
+- [otp](#otp)
+  - [throttles.py](#otpthrottlespy)
+- [emails](#emails)
+  - [tasks.py](#emailstaskspy)
+
+---
+
+## core
+
+### `utils/general.py`
+
+#### `get_or_400(data, keys, required, required_together)`
+**Takes:** request data dict, list of field names to extract, optional list of individually required fields, optional list of groups where at least one field per group must be present  
+**Returns:** `(True, dict)` on success — dict contains extracted values; `(False, Response)` on failure — Response is a ready-to-return 400 error  
+
+Always check the first element before using the second:
+```python
+ok, result = get_or_400(data=request.data, keys=["email", "otp"], required=["email", "otp"])
+if not ok:
+    return result
+```
+
+---
+
+#### `availability_check(data)`
+**Takes:** dict of key-value pairs  
+**Returns:** `(True, None)` if all values are non-None; `(False, Response)` if any value is None — Response is a ready-to-return 400 error  
+
+Use after resolving values from DB or request to confirm nothing is missing before proceeding.
+
+---
+
+#### `str_replace_from_dict(text, replacements)`
+**Takes:** string with placeholders, dict mapping placeholder strings to replacement values  
+**Returns:** string with all substitutions applied  
+
+```python
+str_replace_from_dict("Hello {{name}}, code: {{code}}", {"{{name}}": "Sara", "{{code}}": "4821"})
+# → "Hello Sara, code: 4821"
+```
+
+---
+
+#### `update_record(qs, data)`
+**Takes:** queryset, dict of field-value pairs  
+**Returns:** the queryset after calling `.update(**data)`  
+
+Calls queryset `.update()` — bypasses model `.save()` and signals. Use only when that is intentional.
+
+---
+
+### `utils/generators.py`
+
+#### `random_string(length, allow_numbers, allow_capital, allow_small, allow_special)`
+**Takes:** length (required, positive int), four boolean flags for character sets — numbers (default `True`), capitals, lowercase, specials (all others default `False`)  
+**Returns:** cryptographically secure random string of the given length  
+**Raises:** `ValueError` if no character set is enabled, or length is zero or negative  
+
+---
+
+### `utils/validators.py`
+
+#### `validate_phone(phone, region)`
+**Takes:** phone number string, optional ISO 3166-1 alpha-2 region code (e.g. `"BD"`, `"US"`) — required for local numbers without a country prefix  
+**Returns:** E.164 formatted number string (e.g. `"+8801712345678"`)  
+**Raises:** `ValidationError` if the number is invalid for the given region  
+
+---
+
+#### `DataSerializer(value)`
+**Takes:** a raw value — string, int, or bool  
+**Returns instance with:** `.to_bool()` — converts truthy strings (`"true"`, `"1"`, `"yes"`, `"on"`) and booleans to `True`/`False`  
+
+---
+
+### `utils/query.py`
+
+#### `is_exists(model, **kwargs)`
+**Takes:** a Django model class, plus any filter kwargs  
+**Returns:** `True` if a matching record exists, `False` otherwise  
+
+Single optimised query via `.filter().exists()`. No model instance is loaded.
+
+---
+
+### `utils/decorators.py`
+
+#### `is_admin(user)`
+**Takes:** user object  
+**Returns:** `True` if user is authenticated and `is_staff=True`, otherwise `False`  
+
+---
+
+#### `IsAdminUser` (DRF permission class)
+**Use on:** `permission_classes` of class-based API views  
+**Behaviour:** returns 401 for unauthenticated requests, 403 for authenticated non-staff users  
+
+---
+
+#### `@admin_required` (decorator)
+**Use on:** function-based views  
+**Behaviour:** returns 401 if not authenticated, 403 if authenticated but not staff  
+
+---
+
+### `utils/health_response.py`
+
+#### `health_ok_response(name, message)`
+**Takes:** component name string, status message string  
+**Returns:** `{"name": ..., "status": "healthy", "message": ...}`  
+
+For use only inside `core/health/` check functions.
+
+---
+
+#### `health_error_response(name, message, errors=None)`
+**Takes:** component name string, status message string, optional exception  
+**Returns:** `{"name": ..., "status": "unhealthy", "message": ..., "error": str(errors)}`  
+
+For use only inside `core/health/` check functions.
+
+---
+
+### `utils/app_model_relate.py`
+
+#### `ModelInspector`
+Zero-DB-hit utility for reflecting on the Django app registry.
+
+| Method | Takes | Returns |
+|---|---|---|
+| `get_all_apps(app_labels=None)` | optional list of app label strings | list of app config objects |
+| `get_models(apps, model_names=None)` | app configs, optional model name filter | list of model classes |
+| `get_model_fields(models, field_names=None)` | model classes, optional field name filter | list of non-relation field objects |
+
+---
+
+### `core/tasks.py`
+
+#### `beat_heartbeat` (Celery task)
+**Takes:** nothing  
+**Returns:** nothing  
+
+Writes current UTC timestamp to `"beat_last_seen"` cache key. Scheduled every 60 seconds by Celery Beat. Do not call manually.
+
+---
+
+## authentication
+
+### `authentication/throttles.py`
+
+| Class | Scope key | Applied to |
+|---|---|---|
+| `RegisterThrottle` | `register` | `RegisterView` |
+| `LoginThrottle` | `login` | `LoginView` |
+| `ChangePasswordThrottle` | `change_password` | `ChangePasswordView` |
+
+Rates are set in `settings.py` under `DEFAULT_THROTTLE_RATES`.
+
+---
+
+### `authentication/managers/user.py`
+
+#### `UserManager.create_user(email, password, **extra_fields)`
+**Takes:** email string (required, non-empty), password, any additional model fields  
+**Returns:** saved User instance  
+
+---
+
+#### `UserManager.create_superuser(email, password, **extra_fields)`
+**Takes:** email string, password, any additional model fields  
+**Returns:** saved User instance with `is_staff=True` and `is_superuser=True`  
+**Raises:** `ValueError` if either flag is explicitly passed as `False`  
+
+---
+
+## otp
+
+### `otp/throttles.py`
+
+| Class | Scope key | Applied to |
+|---|---|---|
+| `GetOtpRateThrottle` | `get_otp` | `GetOtpView` |
+
+Rate is per-day. Configured in `settings.py` under `DEFAULT_THROTTLE_RATES`.
+
+---
+
+## emails
+
+### `emails/tasks.py`
+
+#### `send_email_task` (Celery task)
+**Takes:** `subject`, `to_emails` (list), `body`, `body_type` (`EmailBodyType` value)  
+**Returns:** nothing  
+
+Always call with `.delay()` or `.apply_async()`. Retries up to 3 times on `SMTPException` with 30-second backoff. Do not call synchronously.
