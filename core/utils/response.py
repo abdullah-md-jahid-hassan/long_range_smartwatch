@@ -1,65 +1,67 @@
-from rest_framework.response import Response
-from rest_framework import status
-from django.conf import settings
 import traceback
-from rest_framework.exceptions import APIException
+
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import status
+from rest_framework.exceptions import APIException
+from rest_framework.response import Response
 
 
-def _serialize_exception(exc: Exception):
-    """
-    Convert different exception types into a clean, serializable format.
-    """
-    if isinstance(exc, DjangoValidationError):
-        return exc.messages
+def _normalize_errors(errors) -> dict | list | None:
+    if errors is None:
+        return None
 
-    if isinstance(exc, APIException):
-        return exc.detail
+    if isinstance(errors, dict):
+        return {
+            field: [str(m) for m in (msgs if isinstance(msgs, list) else [msgs])]
+            for field, msgs in errors.items()
+        }
 
-    if isinstance(exc, dict):
-        return exc
+    if isinstance(errors, (list, tuple)):
+        return [str(e) for e in errors]
 
-    if isinstance(exc, list):
-        return exc
+    if isinstance(errors, DjangoValidationError):
+        if hasattr(errors, "message_dict"):
+            return _normalize_errors(errors.message_dict)
+        return errors.messages
 
-    return str(exc)
+    if isinstance(errors, APIException):
+        return _normalize_errors(errors.detail)
+
+    return [str(errors)]
 
 
-def success_response(
-    message="Success", 
-    data=None, 
-    status_code=status.HTTP_200_OK
-):
+def success_response(message="Success", data=None, status_code=status.HTTP_200_OK):
     return Response(
-        {"success": True, "message": message, "data": data}, status=status_code
+        {"success": True, "message": message, "data": data},
+        status=status_code,
     )
 
 
 def error_response(
     *,
     message: str = "Something went wrong.",
-    errors: Exception | None = None,
+    errors=None,
     data=None,
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
     request=None,
 ):
-    response = {
+    payload = {
         "success": False,
         "message": message,
-        "errors": _serialize_exception(errors) if errors else None,
         "data": data,
+        "errors": _normalize_errors(errors),
     }
 
-    # DEBUG MODE: rich diagnostics
     if settings.DEBUG and errors is not None:
-        if request is not None:
-            response["path"] = request.path
-            response["method"] = request.method
-            response["payload"] = request.params if request.method == "GET" else request.data
-        response["debug"] = {
+        extra = {
             "exception": errors.__class__.__name__,
-            # "error": _serialize_exception(errors),
             "traceback": traceback.format_exc(),
         }
+        if request is not None:
+            extra["path"] = request.path
+            extra["method"] = request.method
+            extra["payload"] = request.GET if request.method == "GET" else getattr(request, "data", None)
+        payload["debug"] = extra
 
-    return Response(response, status=status_code)
+    return Response(payload, status=status_code)
