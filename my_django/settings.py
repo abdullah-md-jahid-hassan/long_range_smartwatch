@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     'otp',
     'my_test',
     'logs',
+    'notifications',
 ]
 
 MIDDLEWARE = [
