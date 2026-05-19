@@ -1,7 +1,10 @@
 from django.db import models
 from django.utils import timezone
 
-class SystemLog(models.Model):
+from core.models import BaseModel
+
+
+class SystemLog(BaseModel):
     id = models.BigAutoField(primary_key=True)
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     log_level = models.CharField(max_length=20, db_index=True)
@@ -26,14 +29,13 @@ class SystemLog(models.Model):
     ip_address = models.GenericIPAddressField(blank=True, null=True, db_index=True)
     user_agent = models.CharField(max_length=255, blank=True, null=True)
     
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-
     class Meta:
         db_table = 'logs_systemlog'
         ordering = ['-timestamp']
         verbose_name = 'System Log'
         verbose_name_plural = 'System Logs'
         indexes = [
+            models.Index(fields=['created_at']),
             models.Index(fields=['event_name', 'log_level']),
             models.Index(fields=['actor_type', 'actor_id']),
         ]
