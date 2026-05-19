@@ -94,14 +94,17 @@ class ResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        status, data = get_or_400(
+        ok, result = get_or_400(
             data=request.data,
             keys=["email", "otp", "new_password"],
             required=["email", "otp", "new_password"],
         )
-        email = data["email"]
-        otp = data["otp"]
-        new_password = data["new_password"]
+        if not ok:
+            return result
+
+        email       = result["email"]
+        otp         = result["otp"]
+        new_password = result["new_password"]
 
         otp_serializer = OtpVerifySerializer(data={
             "identifier": email,
