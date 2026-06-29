@@ -1,0 +1,81 @@
+name: dt
+
+networks:
+  dt_net:
+    external: true
+
+services:
+  web:
+    image: ${DOCKER_IMAGE}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: dt_web
+    restart: unless-stopped
+    init: true
+    command: >
+      gunicorn my_django.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 2
+      --threads 2
+      --timeout 60
+    env_file:
+      - .env
+    environment:
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 30s
+    networks:
+      - dt_net
+
+  celery_worker:
+    image: ${DOCKER_IMAGE}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: dt_celery_worker
+    restart: unless-stopped
+    command: python -m celery -A my_django.celery worker -l info
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      RUN_MIGRATIONS: "false"
+    networks:
+      - dt_net
+
+  celery_beat:
+    image: ${DOCKER_IMAGE}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: dt_celery_beat
+    restart: unless-stopped
+    command: python -m celery -A my_django.celery beat -l info
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      RUN_MIGRATIONS: "false"
+    networks:
+      - dt_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: dt_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - dt_net
+
+volumes:
+  redis_data:

@@ -8,7 +8,7 @@ set -e
 export PATH="/venv/bin:$PATH"
 
 # Only web container should run migrations & collectstatic
-if [ "$RUN_MIGRATIONS" = "1" ]; then
+if [ "$RUN_MIGRATIONS" = "true" ]; then
     echo "Making migration files..."
     python manage.py makemigrations
 

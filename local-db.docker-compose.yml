@@ -1,0 +1,43 @@
+name: dt-local-db
+
+networks:
+  dt_net:
+    external: true
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: dt_postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - dt_net
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dt_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - db
+    networks:
+      - dt_net
+
+volumes:
+  postgres_data:
+  pgadmin_data:
