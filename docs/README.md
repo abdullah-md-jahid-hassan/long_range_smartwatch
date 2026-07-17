@@ -70,6 +70,7 @@ The backend follows a modular application architecture, where each concern is is
 │  ┌─────────────┐  ┌──────────┐  ┌────────────────────┐  │
 │  │    Auth     │  │   OTP    │  │      Emails        │  │
 │  │    Core     │  │   Logs   │  │   (+ Celery Tasks) │  │
+│  │  Activity   │  │          │  │                    │  │
 │  └─────────────┘  └──────────┘  └────────────────────┘  │
 └───────────┬──────────────┬──────────────────────────────┘
             │              │
@@ -82,12 +83,13 @@ The backend follows a modular application architecture, where each concern is is
 
 ### Request Lifecycle
 
-1. A request arrives and passes through Django middleware in order: Security → Session → Common → CORS → CSRF → Auth → Messages → XFrameOptions → **LoggingContextMiddleware**.
+1. A request arrives and passes through Django middleware in order: Security → Session → Common → CORS → CSRF → Auth → Messages → XFrameOptions → **LoggingContextMiddleware** → **ActivityTrackingMiddleware**.
 2. `LoggingContextMiddleware` injects request metadata (request ID, actor info, IP address, user agent) into Python `contextvars` for the duration of the request.
-3. The router dispatches to the appropriate view, which applies authentication, permissions, and throttling.
-4. Business logic executes, potentially enqueuing Celery tasks (e.g., sending emails).
-5. The view returns a standardized response object.
-6. All significant events are written to `SystemLog` asynchronously via a non-blocking queue handler.
+3. `ActivityTrackingMiddleware` reads `request.request_id` (set by the step above) and resolves the caller's session, ready to record a `UserActivity` row once the response is known.
+4. The router dispatches to the appropriate view, which applies authentication, permissions, and throttling.
+5. Business logic executes, potentially enqueuing Celery tasks (e.g., sending emails).
+6. The view returns a standardized response object.
+7. All significant events are written to `SystemLog` asynchronously via a non-blocking queue handler; a `UserActivity` row for the request is dispatched to Celery on the isolated `"activity"` queue. Both rows carry the same `request_id`, letting them be correlated later without any FK between the two systems.
 
 ---
 
@@ -100,6 +102,7 @@ The backend follows a modular application architecture, where each concern is is
 | [`otp`](../otp/docs/README.md) | OTP generation, storage, verification, and per-purpose policies |
 | [`emails`](../emails/docs/README.md) | Transactional email delivery, async tasks, email audit log |
 | [`logs`](../logs/docs/README.md) | Structured logging, request context middleware, `SystemLog` model |
+| [`activity`](../activity/docs/README.md) | Product analytics — `UserSession`/`UserActivity`, correlated with `logs` via a shared `request_id` |
 
 Each app contains its own `docs/` folder with detailed documentation specific to that module.
 
@@ -408,6 +411,17 @@ Every log entry produced during a request automatically includes:
 - `ip_address`, `user_agent` — Client metadata
 - `business_id` — From the `X-Business-ID` header, for multi-tenant scenarios
 
+### Correlation with Activity Tracking
+
+`SystemLog.request_id` and `activity.UserActivity.request_id` (see [`activity`](../activity/docs/README.md)) carry the same UUID for the same HTTP request — a soft correlation key, never a foreign key. The two systems write independently and asynchronously (logs via a background queue thread, activity via Celery); they're joined only at query time:
+
+```sql
+SELECT sl.event_name, sl.log_level, ua.service, ua.duration_ms
+FROM logs_systemlog sl
+JOIN activity_user_activity ua ON ua.request_id = sl.request_id
+WHERE sl.request_id = '<uuid>';
+```
+
 ### Health Check
 
 `GET /` returns a real-time health report:
@@ -486,6 +500,7 @@ An `entrypoint.sh` script handles startup logic (migrations, static files collec
 ├── emails/                     # Email delivery service
 ├── otp/                        # One-time password service
 ├── logs/                       # Structured logging and audit trail
+├── activity/                   # Product analytics — sessions & per-request tracking
 │
 ├── docs/                       # Project-level documentation (this folder)
 ├── docker/                     # Docker build files

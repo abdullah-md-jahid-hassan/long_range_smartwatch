@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     'otp',
     'my_test',
     'logs',
+    'activity',
     'notifications',
 ]
 
@@ -114,7 +115,13 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'logs.middleware.LoggingContextMiddleware',
+    'activity.middleware.ActivityTrackingMiddleware',  # AFTER logs middleware — reads request.request_id
 ]
+
+# =========================================
+# Activity Tracking
+# =========================================
+ACTIVITY_SKIP_PATHS = ("/admin/", "/static/", "/media/", "/favicon.ico")
 
 
 # =========================================
@@ -237,6 +244,8 @@ else:
 # =========================================
 # Celery
 # =========================================
+from kombu import Queue
+
 CELERY_BROKER_URL = CONFIG.CELERY_BROKER_URL
 CELERY_RESULT_BACKEND = CONFIG.CELERY_RESULT_BACKEND
 CELERY_ACCEPT_CONTENT = ['json']
@@ -244,6 +253,14 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_IGNORE_RESULT = True
+
+# Isolated from "default" so high-volume, non-critical activity writes can
+# never starve time-sensitive tasks (emails, OTP dispatch).
+# Worker: celery -A my_django worker -Q activity,default -c 4
+CELERY_TASK_QUEUES = (
+    Queue('default'),
+    Queue('activity'),
+)
 
 
 # =========================================
