@@ -150,27 +150,34 @@ return error_response("Invalid OTP", status=400)
 
 ## 4. Utility Functions
 
-**Module:** `core.general`
+**Module:** `core.utils.general`
 
-### `get_or_400(model, **kwargs)`
+### `get_or_400(data, keys, required=None, required_together=None)`
 
-Fetches a single model instance or raises a `ValidationError` (HTTP 400) if not found. A safer alternative to `get_object_or_404` for API views where 404 is not the appropriate semantics.
+Extracts and validates request data. `keys` is a dict mapping each field name to its expected type — a type, a tuple of types, or `None` to skip type checking. Returns `(True, values_dict)` on success or `(False, Response)` where the Response is a ready-to-return 400 error listing missing required fields and/or wrong data types.
 
 ```python
-from core.general import get_or_400
+from core.utils.general import get_or_400
 
-user = get_or_400(User, email='user@example.com')
+ok, result = get_or_400(
+    data=request.data,
+    keys={"email": str, "otp": str},
+    required=["email", "otp"],
+)
+if not ok:
+    return result
 ```
 
-### `availability_check(model, field, value)`
+### `availability_check(data)`
 
-Returns `True` if a record with the given field/value does NOT exist. Useful for uniqueness checks before creation.
+Takes a dict of key-value pairs. Returns `(True, None)` if every value is non-None, or `(False, Response)` with a ready-to-return 400 error naming the missing keys. Useful after resolving values from the DB or request to confirm nothing is missing before proceeding.
 
 ```python
-from core.general import availability_check
+from core.utils.general import availability_check
 
-is_available = availability_check(User, 'email', 'user@example.com')
-# True → email is not taken
+ok, error = availability_check({"user": user, "profile": profile})
+if not ok:
+    return error
 ```
 
 ### `str_replace_from_dict(text, replacements)`
@@ -326,13 +333,18 @@ if client and client.ping():
     print("Redis is reachable")
 ```
 
-### Performing a safe model lookup
+### Validating request data in a view
 
 ```python
-from core.general import get_or_400
-from authentication.models import User
+from core.utils.general import get_or_400
 
-def get_user_profile(user_id):
-    user = get_or_400(User, id=user_id)
-    return user
+def post(self, request):
+    ok, result = get_or_400(
+        data=request.data,
+        keys={"email": str, "user_id": int},
+        required=["email"],
+    )
+    if not ok:
+        return result
+    email = result["email"]
 ```

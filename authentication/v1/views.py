@@ -96,7 +96,7 @@ class ResetPasswordView(APIView):
     def post(self, request):
         ok, result = get_or_400(
             data=request.data,
-            keys=["email", "otp", "new_password"],
+            keys={"email": str, "otp": str, "new_password": str},
             required=["email", "otp", "new_password"],
         )
         if not ok:

@@ -3,9 +3,18 @@ from core.utils.response import error_response
 from rest_framework.response import Response
 from typing import Any
 
+
+
+def _expected_type_name(data_type: type | tuple[type, ...]) -> str:
+    """Human-readable name of an expected type (or tuple of types)."""
+    if isinstance(data_type, tuple):
+        return " or ".join(t.__name__ for t in data_type)
+    return data_type.__name__
+
+
 def get_or_400(
     data: dict,
-    keys: list[str],
+    keys: dict[str, type | tuple[type, ...] | None],
     required: list[str] | None = None,
     required_together: list[list[str]] | None = None,
 )-> tuple[bool, Response | dict]:
@@ -13,37 +22,45 @@ def get_or_400(
     Extract and validate request data.
 
     Responsibilities:
-    1. Extract values for the given `keys` from `data`.
+    1. Extract values for the given `keys` from `data`. Each key maps to an
+       expected type (or tuple of types) checked with isinstance; map to
+       None to skip type checking for that field.
     2. Enforce presence of individually required fields (`required`).
     3. Enforce grouped requirement rules (`required_together`), where at least
        one field from each group must be present.
-    4. Return a standardized (status_code, payload) tuple suitable for DRF views.
+    4. Return `(True, values_dict)` on success or `(False, Response)` where
+       the Response is a ready-to-return 400 error.
 
     Design notes:
     - Uses set operations for O(1) membership checks.
-    - Avoids redundant loops and unnecessary state flags.
+    - Type checks apply only to present (non-None) values.
     - Keeps validation order explicit and predictable.
     """
 
     required_set = set(required or [])
     values: dict[str, object] = {}
     missing_required: list[str] = []
+    wrong_data_types: list[str] = []
 
     # Extract values and validate individually required fields
-    for key in keys:
-        value = data.get(key)
-        if key in required_set and value is None:
-            missing_required.append(key)
+    for name, data_type in keys.items():
+        value = data.get(name)
+        if name in required_set and value is None:
+            missing_required.append(name)
+        elif data_type and value is not None and not isinstance(value, data_type):
+            wrong_data_types.append(f'"{name}" must be of type {_expected_type_name(data_type)}')
         else:
-            values[key] = value
+            values[name] = value
 
+    error_parts = []
     if missing_required:
-        return (
-            False,
-            error_response(
-                message=f"Missing required field(s): {', '.join(missing_required)}",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            ),
+        error_parts.append(f"Missing required field(s): {', '.join(missing_required)}")
+    if wrong_data_types:
+        error_parts.append(f"Wrong data type(s): {', '.join(wrong_data_types)}")
+    if error_parts:
+        return False, error_response(
+            message="; ".join(error_parts),
+            status_code=status.HTTP_400_BAD_REQUEST,
         )
 
     # Validate grouped requirements (at least one field per group)

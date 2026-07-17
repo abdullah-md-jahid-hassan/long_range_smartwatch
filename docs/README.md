@@ -319,13 +319,13 @@ All API responses follow a consistent envelope format:
 | Method | Path | Description | Auth Required |
 |---|---|---|---|
 | `GET` | `/` | System health report | No |
-| `POST` | `/auth/register/` | Register a new user | No |
-| `POST` | `/auth/login/` | Login and receive JWT tokens | No |
-| `POST` | `/auth/logout/` | Logout and blacklist refresh token | Yes |
-| `POST` | `/auth/token/refresh/` | Obtain a new access token | No |
-| `GET` | `/auth/verify/` | Verify the current session | Yes |
-| `POST` | `/auth/password/change/` | Change authenticated user's password | Yes |
-| `POST` | `/otp/get-otp/` | Request a one-time password | Conditional |
+| `POST` | `/v1/auth/register/` | Register a new user | No |
+| `POST` | `/v1/auth/login/` | Login and receive JWT tokens | No |
+| `POST` | `/v1/auth/logout/` | Logout and blacklist refresh token | Yes |
+| `POST` | `/v1/auth/token/refresh/` | Obtain a new access token | No |
+| `GET` | `/v1/auth/verify/` | Verify the current session | Yes |
+| `POST` | `/v1/auth/password/change/` | Change authenticated user's password | Yes |
+| `POST` | `/v1/otp/get-otp/` | Request a one-time password | Conditional |
 
 For detailed request/response schemas, refer to the individual app documentation.
 

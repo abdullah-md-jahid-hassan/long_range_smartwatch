@@ -52,6 +52,11 @@ class OTPService:
         """Redis key storing active OTP ids."""
         return f"otp:index:{purpose}:{user_hash}"
 
+    @classmethod
+    def _attempts_key(cls, purpose: OtpPurpose, user_hash: str) -> str:
+        """Redis key tracking failed verify attempts for a lockout window."""
+        return f"otp:attempts:{purpose}:{user_hash}"
+
     # ---------------------------------------------------------
     # PUBLIC API
     # ---------------------------------------------------------
@@ -98,11 +103,21 @@ class OTPService:
         """
         Verify OTP against active ones.
 
-        Deletes OTP on successful match.
+        Deletes OTP on successful match. Locks out further attempts for
+        this user+purpose once MAX_VERIFY_ATTEMPTS is exceeded within the
+        OTP's TTL window, so a valid OTP can't be brute-forced by guessing
+        (6-digit numeric OTPs are only ~1M possibilities).
         """
 
         user_hash = cls._user_hash(user)
         index_key = cls._index_key(purpose, user_hash)
+        attempts_key = cls._attempts_key(purpose, user_hash)
+
+        attempts = redis_client.incr(attempts_key)
+        if attempts == 1:
+            redis_client.expire(attempts_key, cls.OTP_TTL_SECONDS)
+        if attempts > cls.MAX_VERIFY_ATTEMPTS:
+            return False
 
         otp_ids = redis_client.lrange(index_key, 0, -1)
 
@@ -118,6 +133,7 @@ class OTPService:
             # Constant-time comparison
             if hmac.compare_digest(stored_hash, submitted_hash):
                 cls._delete_otp(index_key, otp_key, otp_id)
+                redis_client.delete(attempts_key)
                 return True
 
         return False
@@ -157,15 +173,15 @@ class OTPService:
         otp = cls.generate(user, purpose)
         match channel:
             case OtpChannel.EMAIL:
-                from emails.utils.general import send_email_core
                 send_email_task.delay(
                     subject="OTP",
                     to_emails=[user],
                     body=render_to_string(
-                        "otp_body.html", 
+                        "otp_body.html",
                         {
                             "otp": otp,
                             "purpose": purpose,
+                            "expiry_minutes": CONFIG.OTP_EXPIRY_MINUTES,
                         }
                     ),
                     body_type=EmailBodyType.HTML,

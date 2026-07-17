@@ -12,7 +12,7 @@ class test1(APIView): # Verify Otp
         flag, data = get_or_400(
             data=request.data,
             required=["purpose", "otp", "email"],
-            keys=["purpose", "otp", "email"]
+            keys={"purpose": str, "otp": str, "email": str}
         )
 
         if not flag:

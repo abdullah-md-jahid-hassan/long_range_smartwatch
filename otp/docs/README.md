@@ -33,14 +33,17 @@ otp/
 ├── migrations/
 ├── docs/
 │   └── README.md           # This file
+├── services/
+│   ├── __init__.py         # Exposes OTPService
+│   ├── otp.py              # OTPService class
+│   └── rules.py            # OTPPolicy, _OTP_POLICY_TABLE, verify_otp_rules
+├── v1/
+│   ├── serializers.py      # OtpVerifySerializer
+│   ├── urls.py
+│   └── views.py            # GetOtpView
 ├── apps.py
 ├── choices.py              # Enums for purpose and channel
-├── policies.py             # Per-purpose OTP rules
-├── serializers.py          # OtpVerifySerializer
-├── services.py             # OTPService class
-├── throttles.py            # GetOtpRateThrottle
-├── urls.py
-└── views.py                # GetOtpView
+└── throttles.py            # GetOtpRateThrottle
 ```
 
 ---
@@ -50,42 +53,47 @@ otp/
 ### Generation Flow
 
 ```
-Client → POST /otp/get-otp/  →  OTPService.generate()
+Client → POST /v1/otp/get-otp/  →  verify_otp_rules(request)
                                     │
-                                    ├─ Validate purpose policy
-                                    ├─ Check user existence (if required by policy)
+                                    ├─ Extract & type-check fields (get_or_400)
+                                    ├─ Validate purpose against the policy table
+                                    ├─ Enforce auth / identifier / channel rules
+                                    └─ Check user existence or duplication (per policy)
+                                    │
+                                OTPService.send()
+                                    │
+                                    ├─ Generate random OTP (length/charset from config)
+                                    ├─ Hash the OTP (SHA-256) and store in Redis with TTL
                                     ├─ Enforce max active OTP limit
-                                    ├─ Generate N-digit random OTP
-                                    ├─ Hash the OTP (SHA-256)
-                                    ├─ Store hash in Redis with TTL
-                                    └─ Send via configured channel (email)
+                                    └─ Dispatch email via send_email_task (Celery)
 ```
 
 ### Verification Flow
 
 ```
-Client sends OTP in another endpoint (e.g., /auth/register/)
+Client sends OTP in another endpoint (e.g., /v1/auth/password/reset/)
                                     │
-                            OtpVerifySerializer
+                            OtpVerifySerializer.is_valid()
                                     │
-                            OTPService.verify()
+                            OtpVerifySerializer.verify() → OTPService.verify()
                                     │
+                                    ├─ Reject if MAX_VERIFY_ATTEMPTS exceeded (lockout)
                                     ├─ Look up stored hashes for (identifier, purpose)
                                     ├─ Hash the provided OTP
                                     ├─ HMAC compare against stored hashes
                                     ├─ If match → delete from Redis (one-time use)
-                                    └─ Return True / raise ValidationError
+                                    └─ Return True / False
 ```
 
 ---
 
 ## 3. API Endpoints
 
-Base path: `/otp/`
+Base path: `/v1/otp/`
 
 ---
 
-### POST `/otp/get-otp/`
+### POST `/v1/otp/get-otp/`
 
 Request an OTP for a given purpose and delivery channel.
 
@@ -95,24 +103,25 @@ Request an OTP for a given purpose and delivery channel.
 
 ```json
 {
-  "email": "user@example.com",
-  "purpose": "REGISTRATION",
-  "channel": "EMAIL"
+  "purpose": "registration",
+  "user_identifier": "user@example.com",
+  "otp_channel": "email"
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `email` | string | Yes | The recipient's email address |
-| `purpose` | string | Yes | The reason for the OTP (see [OTP Purposes](#4-otp-purposes)) |
-| `channel` | string | No | Delivery channel. Defaults to `EMAIL`. |
+| `purpose` | string | Yes | The reason for the OTP, lowercase (see [OTP Purposes](#4-otp-purposes)) |
+| `user_identifier` | string | Policy-dependent | Email address or phone number. Required when the policy sets `require_identifier`; otherwise derived from the authenticated user |
+| `otp_channel` | string | Policy-dependent | `email` or `phone`. Only honored when the policy channel is `all`; otherwise the policy channel is forced |
+| `region` | string | Phone only | Phone region code, required when the resolved channel is `phone` |
 
 **Success Response — `200 OK`:**
 
 ```json
 {
   "success": true,
-  "message": "OTP sent successfully",
+  "message": "OTP sent successfully. Please check your email. Valid for 5 minutes.",
   "data": null
 }
 ```
@@ -121,8 +130,9 @@ Request an OTP for a given purpose and delivery channel.
 
 | Status | Scenario |
 |---|---|
-| `400 Bad Request` | Invalid purpose, user does not exist (when required), or max OTP limit reached |
+| `400 Bad Request` | Missing/wrong-type field, invalid or disabled purpose, invalid identifier or channel, or user already exists (when the policy forbids duplicates) |
 | `401 Unauthorized` | Authentication required for this purpose but token not provided |
+| `404 Not Found` | Policy requires an existing user and none matched the identifier |
 | `429 Too Many Requests` | Daily OTP throttle limit exceeded |
 
 ---
@@ -157,31 +167,33 @@ Defined in `otp/choices.py` as `OtpChannel`.
 
 ## 5. OTP Policies
 
-Each purpose has a policy defined in `otp/policies.py` via the `OTPPolicy` dataclass. Policies control the behavior of OTP generation for each use case.
+Each purpose has a policy registered in the `_OTP_POLICY_TABLE` inside `otp/services/rules.py` via the frozen `OTPPolicy` dataclass. `verify_otp_rules(request)` enforces every policy rule for an incoming OTP request and is what `GetOtpView` calls.
 
 ### `OTPPolicy` Fields
 
 | Field | Type | Description |
 |---|---|---|
-| `enabled` | `bool` | Whether this purpose is active |
-| `requires_auth` | `bool` | Whether the requester must be authenticated |
-| `user_must_exist` | `bool` | Whether the email must belong to an existing user |
-| `default_channel` | `OtpChannel` | The default delivery channel |
+| `enable` | `bool` | Whether this purpose is active |
+| `require_auth` | `bool` | Whether the requester must be authenticated |
+| `require_identifier` | `bool` | Client must supply `user_identifier`; when `False` it is derived from the authenticated user |
+| `check_user_exists` | `bool` | A matching user must already exist (404 otherwise) |
+| `allow_duplicate` | `bool` | A matching user may already exist; `False` rejects with 400 |
+| `channel` | `OtpChannel` | Forced channel (defaults to `OTP_CHANNEL` config), or `ALL` to let the caller choose |
 
-### Default Policies
+### Registered Policies
 
-| Purpose | `requires_auth` | `user_must_exist` |
-|---|---|---|
-| `REGISTRATION` | No | No (user is being created) |
-| `PASSWORD_RESET` | No | Yes |
-| `PASSWORD_CHANGE` | Yes | Yes |
-| `LOGIN` | No | Yes |
-| `VERIFICATION` | No | Conditional |
-| `CHANGE_EMAIL` | Yes | Yes |
-| `CHANGE_PHONE` | Yes | Yes |
-| `CHANGE_USERNAME` | Yes | Yes |
+| Purpose | `enable` | `require_auth` | `require_identifier` | `check_user_exists` | `allow_duplicate` |
+|---|---|---|---|---|---|
+| `LOGIN` | No | No | Yes | Yes | Yes |
+| `REGISTRATION` | Yes | No | Yes | No | No |
+| `PASSWORD_CHANGE` | No | Yes | No | Yes | Yes |
+| `PASSWORD_RESET` | Yes | No | Yes | No | Yes |
+| `CHANGE_EMAIL` | Yes | Yes | No | Yes | Yes |
+| `CHANGE_PHONE` | No | Yes | No | Yes | Yes |
+| `CHANGE_USERNAME` | No | Yes | No | Yes | Yes |
+| `VERIFICATION` | No | Yes | No | Yes | Yes |
 
-> Policies can be modified in `otp/policies.py` to match project-specific requirements without changing the underlying service logic.
+> Policies can be modified in `otp/services/rules.py` to match project-specific requirements without changing the underlying service logic.
 
 ---
 
@@ -191,39 +203,49 @@ Each purpose has a policy defined in `otp/policies.py` via the `OTPPolicy` datac
 
 ### Class Methods
 
-#### `OTPService.generate(identifier, purpose, channel)`
+#### `OTPService.generate(user, purpose)`
 
-Generates and dispatches an OTP.
+Generates and stores a new OTP, enforcing the max active OTP limit. Oldest OTPs are evicted when the limit is exceeded.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `identifier` | `str` | Unique identifier (email address or phone number) |
+| `user` | `str` | Unique identifier (email address or phone number) |
 | `purpose` | `OtpPurpose` | The use case for this OTP |
-| `channel` | `OtpChannel` | Delivery channel |
 
-**Raises:** `ValidationError` if the max active OTP limit is reached.
+**Returns:** the raw OTP string (for delivery).
 
-#### `OTPService.verify(identifier, purpose, otp_value)`
+#### `OTPService.send(user, purpose, channel)`
+
+Generates an OTP via `generate()` and dispatches it through the given channel. Email delivery goes through the `send_email_task` Celery task using the `otp_body.html` template; the `phone` channel is not yet implemented.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `user` | `str` | Unique identifier (email address or phone number) |
+| `purpose` | `OtpPurpose` | The use case for this OTP |
+| `channel` | `OtpChannel` | Delivery channel (`email` implemented, `phone` raises `NotImplementedError`) |
+
+#### `OTPService.verify(user, purpose, submitted_otp)`
 
 Verifies a submitted OTP.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `identifier` | `str` | The identifier the OTP was issued for |
+| `user` | `str` | The identifier the OTP was issued for |
 | `purpose` | `OtpPurpose` | The purpose to verify against |
-| `otp_value` | `str` | The raw OTP submitted by the user |
+| `submitted_otp` | `str` | The raw OTP submitted by the user |
 
-**Returns:** `True` on success.  
-**Raises:** `ValidationError` if the OTP is invalid or expired.
+**Returns:** `True` on success, `False` if the OTP is invalid, expired, or the attempt lockout is active.
 
-**Side effect:** The verified OTP is deleted from Redis immediately (one-time use).
+**Side effects:** The verified OTP is deleted from Redis immediately (one-time use). Each failed call increments a per-user/purpose attempt counter; once `MAX_VERIFY_ATTEMPTS` is exceeded within the TTL window, further attempts are rejected without checking. A successful verify clears the counter.
 
 ### Redis Key Structure
 
-OTPs are stored under a namespaced key pattern:
+OTPs are stored under namespaced key patterns (the identifier is stored as its SHA-256 hash):
 
 ```
-otp:{purpose}:{identifier}:{index}
+otp:{purpose}:{sha256(identifier)}:{uuid}          # one key per active OTP
+otp:index:{purpose}:{sha256(identifier)}           # list of active OTP ids
+otp:attempts:{purpose}:{sha256(identifier)}        # failed verify counter (lockout)
 ```
 
 Multiple OTPs can exist concurrently for the same identifier/purpose pair (up to `MAX_ACTIVE_OTPS`). Each has an independent TTL.
@@ -236,10 +258,15 @@ All OTP settings are loaded from environment variables.
 
 | Environment Variable | Description | Default |
 |---|---|---|
-| `OTP_LENGTH` | Number of digits in the generated OTP | `6` |
+| `OTP_CHANNEL` | Default delivery channel used by policies | `email` |
+| `OTP_LENGTH` | Number of characters in the generated OTP | `6` |
 | `OTP_EXPIRY_MINUTES` | Time-to-live for each OTP in minutes | `5` |
-| `OTP_ALLOW_NUMBER` | If `True`, use numeric digits only | `True` |
+| `OTP_ALLOW_NUMBER` | Include numeric digits in the OTP charset | `True` |
+| `OTP_ALLOW_CAPITAL` | Include uppercase letters in the OTP charset | `False` |
+| `OTP_ALLOW_SMALL` | Include lowercase letters in the OTP charset | `False` |
+| `OTP_ALLOW_SPECIAL` | Include special characters in the OTP charset | `False` |
 | `MAX_ACTIVE_OTPS` | Maximum number of active OTPs per identifier per purpose | `5` |
+| `MAX_VERIFY_ATTEMPTS` | Failed verify attempts allowed before lockout (per identifier per purpose, within the TTL window) | `5` |
 | `GET_OTP_THROTTLE_RATE_PER_DAY` | Maximum OTP requests per day per client | `25` |
 
 ---
@@ -266,7 +293,11 @@ Upon successful verification, the matching Redis key is deleted immediately. The
 
 ### Rate Limiting
 
-The `GetOtpRateThrottle` applies a daily cap (default: 25 requests per day) on OTP generation requests, scoped per client IP or authenticated user. This prevents automated OTP flooding.
+The `GetOtpRateThrottle` (a `UserRateThrottle`) applies a daily cap (default: 25 requests per day) on OTP generation requests — keyed by user id for authenticated callers and by IP for anonymous ones. This prevents automated OTP flooding, including for auth-required purposes.
+
+### Brute-Force Lockout
+
+`OTPService.verify()` tracks failed attempts per identifier/purpose in Redis. After `MAX_VERIFY_ATTEMPTS` failures within the OTP TTL window, all further attempts are rejected — so a valid OTP cannot be brute-forced by guessing (a 6-digit numeric OTP has only ~1M possibilities). A successful verification resets the counter.
 
 ### Purpose Isolation
 
@@ -281,30 +312,33 @@ An OTP generated for `REGISTRATION` cannot be used to verify a `PASSWORD_RESET` 
 **Step 1 — Request OTP:**
 
 ```
-POST /otp/get-otp/
+POST /v1/otp/get-otp/
 {
-  "email": "user@example.com",
-  "purpose": "PASSWORD_RESET"
+  "purpose": "password_reset",
+  "user_identifier": "user@example.com"
 }
 ```
 
 **Step 2 — Accept OTP in your endpoint and verify:**
 
 ```python
-from otp.serializers import OtpVerifySerializer
+from otp.v1.serializers import OtpVerifySerializer
+from otp.choices import OtpPurpose
 
-# In your serializer or view:
+# In your view:
 otp_serializer = OtpVerifySerializer(data={
-    "email": request.data["email"],
-    "otp":   request.data["otp"],
-    "purpose": "PASSWORD_RESET",
+    "identifier": request.data["email"],
+    "otp":        request.data["otp"],
+    "purpose":    OtpPurpose.PASSWORD_RESET,
 })
-otp_serializer.is_valid(raise_exception=True)
+otp_serializer.is_valid(raise_exception=True)   # format checks only
+if not otp_serializer.verify():                  # actual OTP check
+    ...  # return a 400 — invalid or expired OTP
 # Verification passed — proceed with the business logic
 ```
 
 ### Adding a New Purpose
 
 1. Add the new value to `OtpPurpose` in `otp/choices.py`.
-2. Add a corresponding policy entry in `get_otp_rules()` inside `otp/policies.py`.
+2. Add a corresponding row to `_OTP_POLICY_TABLE` inside `otp/services/rules.py`.
 3. (Optional) Add a dedicated email template or delivery handler in the `emails` app.

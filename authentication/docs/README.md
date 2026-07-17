@@ -383,7 +383,7 @@ To add custom fields (e.g., `phone`, `avatar`, `timezone`):
 
 ### OTP Dependency
 
-Registration requires a valid OTP. The OTP must be requested first via `POST /otp/get-otp/` with `purpose=REGISTRATION`. See the [OTP module documentation](../../otp/docs/README.md) for details.
+Registration requires a valid OTP. The OTP must be requested first via `POST /v1/otp/get-otp/` with `purpose=registration`. See the [OTP module documentation](../../otp/docs/README.md) for details.
 
 ### Extending the Login Response
 

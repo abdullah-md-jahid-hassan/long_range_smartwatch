@@ -28,12 +28,16 @@
 ### `utils/general.py`
 
 #### `get_or_400(data, keys, required, required_together)`
-**Takes:** request data dict, list of field names to extract, optional list of individually required fields, optional list of groups where at least one field per group must be present  
-**Returns:** `(True, dict)` on success — dict contains extracted values; `(False, Response)` on failure — Response is a ready-to-return 400 error  
+**Takes:** request data dict, dict mapping each field name to its expected type — a type, a tuple of types, or `None` to skip type checking — optional list of individually required fields, optional list of groups where at least one field per group must be present  
+**Returns:** `(True, dict)` on success — dict contains extracted values; `(False, Response)` on failure — Response is a ready-to-return 400 error listing missing fields and/or wrong data types  
 
-Always check the first element before using the second:
+Type checks apply only to present (non-None) values. Always check the first element before using the second:
 ```python
-ok, result = get_or_400(data=request.data, keys=["email", "otp"], required=["email", "otp"])
+ok, result = get_or_400(
+    data=request.data,
+    keys={"email": str, "otp": str, "age": (int, float), "extra": None},
+    required=["email", "otp"],
+)
 if not ok:
     return result
 ```
@@ -199,7 +203,7 @@ Rates are set in `settings.py` under `DEFAULT_THROTTLE_RATES`.
 |---|---|---|
 | `GetOtpRateThrottle` | `get_otp` | `GetOtpView` |
 
-Rate is per-day. Configured in `settings.py` under `DEFAULT_THROTTLE_RATES`.
+Rate is per-day. Configured in `settings.py` under `DEFAULT_THROTTLE_RATES`. Subclasses `UserRateThrottle`, so authenticated requests are keyed by user id and anonymous requests by IP — auth-required OTP purposes stay rate-limited too.
 
 ---
 
