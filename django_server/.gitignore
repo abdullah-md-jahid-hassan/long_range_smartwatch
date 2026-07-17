@@ -63,3 +63,4 @@ logs/logs_output/*
 # ======= Developer Files (internal only) =======
 developers_files/
 .claude/
+ 
