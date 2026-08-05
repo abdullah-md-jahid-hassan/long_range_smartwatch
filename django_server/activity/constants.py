@@ -5,10 +5,13 @@ from .choices import ActivityAction
 # by a shorter one. "/" is the catch-all and must stay last.
 # Add a new entry here whenever a new app/domain is introduced.
 SERVICE_ROUTES: dict[str, str] = {
-    "/v1/auth/":          "auth",
-    "/v1/otp/":            "otp",
-    "/v1/notifications/":  "notifications",
-    "/":                   "core",
+    "/v1/auth/":              "auth",
+    "/v1/otp/":                "otp",
+    "/v1/notifications/":      "notifications",
+    "/v1/devices/actions/":   "device_actions",
+    "/v1/devices/":            "devices",
+    "/console/":               "console",
+    "/":                       "core",
 }
 
 # Direct mapping from HTTP verb to a default ActivityAction.
