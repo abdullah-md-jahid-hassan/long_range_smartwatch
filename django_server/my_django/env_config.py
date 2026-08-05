@@ -29,6 +29,10 @@ class EnvConfig:
     #         "content-type",
     #     ]
 
+    # Device connector — "placeholder" until the mobile app exists (see
+    # device_actions/connectors.py)
+    DEVICE_CONNECTOR_BACKEND = config('DEVICE_CONNECTOR_BACKEND', default='placeholder', cast=str)
+
     # Throttles Settings
     LOGIN_THROTTLE_RATE_PER_MINUTE = config('LOGIN_THROTTLE_RATE_PER_MINUTE', default=5, cast=int)
     REGISTER_THROTTLE_RATE_PER_MINUTE = config('REGISTER_THROTTLE_RATE_PER_MINUTE', default=3, cast=int)

@@ -1,0 +1,53 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}Dashboard{% endblock %}
+{% block page_heading %}Dashboard{% endblock %}
+{% block content %}
+<p class="page-subtitle" style="margin-bottom:20px;">
+  Fleet overview. Every action below runs through the same service layer the real watch API will call in Phase 2 —
+  this dashboard is a stand-in operator console, not a separate code path.
+</p>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Devices</div>
+    <div class="stat-value">{{ stats.total_devices }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Online Now</div>
+    <div class="stat-value">{{ stats.online_devices }}</div>
+    <div class="stat-hint">seen in the last 3 minutes</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Actions Today</div>
+    <div class="stat-value">{{ stats.actions_today }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Staff Admins</div>
+    <div class="stat-value">{{ stats.staff_admins }}</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header"><h2>Recent Activity</h2></div>
+  <table class="data-table">
+    <thead>
+      <tr><th>Feature</th><th>Device</th><th>Mode</th><th>Triggered By</th><th>Status</th><th>When</th></tr>
+    </thead>
+    <tbody>
+      {% for action in recent_actions %}
+      <tr>
+        <td>{{ action.feature_key }}</td>
+        <td><a class="row-link" href="{% url 'console:device-detail' action.device.device_uuid %}">{{ action.device.display_name }}</a></td>
+        <td>{{ action.get_mode_display }}</td>
+        <td>{{ action.triggered_by.email|default:"—" }}</td>
+        <td><span class="pill {{ action.status|status_pill_class }}">{{ action.status|status_label }}</span></td>
+        <td>{{ action.created_at|timesince }} ago</td>
+      </tr>
+      {% empty %}
+      <tr class="empty-row"><td colspan="6">No actions triggered yet — pick a device and try a "Fetch Now" button.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

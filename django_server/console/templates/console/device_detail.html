@@ -1,0 +1,78 @@
+{% extends "console/base.html" %}
+{% load console_extras %}
+{% block title %}{{ device.display_name }}{% endblock %}
+{% block page_heading %}{{ device.display_name }}{% endblock %}
+{% block content %}
+
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-body">
+    <div class="device-hero">
+      <div class="device-hero-id">
+        <div class="device-avatar">{{ device.display_name|monogram }}</div>
+        <div>
+          <div class="device-name">{{ device.display_name }}</div>
+          <div class="device-owner">{{ device.user.email }}</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        {% if device.status == "revoked" %}
+          <span class="pill pill-danger">Revoked</span>
+        {% else %}
+          {% if device.is_online %}
+            <span class="pill pill-success"><span class="dot dot-online"></span> Online</span>
+          {% else %}
+            <span class="pill pill-neutral"><span class="dot dot-offline"></span> Offline</span>
+          {% endif %}
+          <form method="post" action="{% url 'console:revoke-device' device.device_uuid %}"
+                onsubmit="return confirm('Revoke this device? It will stop syncing until re-registered.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <dl class="kv-grid">
+      <div><dt>Device ID</dt><dd><code>{{ device.device_uuid }}</code></dd></div>
+      <div><dt>Model</dt><dd>{{ device.model_name|default:"—" }}</dd></div>
+      <div><dt>OS Version</dt><dd>{{ device.os_version|default:"—" }}</dd></div>
+      <div><dt>App Version</dt><dd>{{ device.app_version|default:"—" }}</dd></div>
+      <div><dt>Last Seen</dt><dd>{% if device.last_seen_at %}{{ device.last_seen_at|timesince }} ago{% else %}Never{% endif %}</dd></div>
+      <div><dt>Connector</dt><dd>Placeholder <span class="action-status-meta">(no mobile app yet)</span></dd></div>
+    </dl>
+  </div>
+</div>
+
+{% for category in categories %}
+  {% if category.rows %}
+  <div class="category-section">
+    <div class="category-title">{{ category.label }} <span class="category-count">({{ category.rows|length }})</span></div>
+    <div class="action-grid">
+      {% for row in category.rows %}
+        {% include "console/partials/_action_row.html" with row=row device=device %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
+
+<div class="panel" style="margin-top:8px;">
+  <div class="panel-header"><h2>Recent Actions on This Device</h2></div>
+  <table class="data-table">
+    <thead><tr><th>Feature</th><th>Mode</th><th>Triggered By</th><th>Status</th><th>When</th></tr></thead>
+    <tbody>
+      {% for action in recent_actions %}
+      <tr>
+        <td>{{ action.feature_key }}</td>
+        <td>{{ action.get_mode_display }}</td>
+        <td>{{ action.triggered_by.email|default:"—" }}</td>
+        <td><span class="pill {{ action.status|status_pill_class }}">{{ action.status|status_label }}</span></td>
+        <td>{{ action.created_at|timesince }} ago</td>
+      </tr>
+      {% empty %}
+      <tr class="empty-row"><td colspan="5">No actions triggered on this device yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
