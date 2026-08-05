@@ -1,0 +1,52 @@
+{% load console_extras %}<div class="action-card" data-action-row>
+  <div class="action-card-head">
+    <div class="badge badge-{{ row.feature.category }}">{{ row.feature.label|monogram }}</div>
+    <div>
+      <p class="action-title">{{ row.feature.label }}</p>
+      <p class="action-desc">{{ row.feature.description }}</p>
+      {% if row.feature.requires_special_consent %}
+        <span class="consent-flag">Special consent required</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="action-status-row">
+    {% if row.latest %}
+      <span class="pill {{ row.latest.status|status_pill_class }}">{{ row.latest.status|status_label }}</span>
+      <span class="action-status-meta">{{ row.latest.created_at|timesince }} ago{% if row.latest.triggered_by %} · {{ row.latest.triggered_by.email }}{% endif %}</span>
+    {% else %}
+      <span class="pill pill-neutral">Never run</span>
+      <span class="action-status-meta">—</span>
+    {% endif %}
+  </div>
+
+  <form method="post" action="{% url 'console:trigger-action' device.device_uuid row.feature.key %}" data-ajax-row-form class="action-controls">
+    {% csrf_token %}
+    {% if row.feature.has_facing_option %}
+      <select name="facing">
+        <option value="back">Back camera</option>
+        <option value="front">Front camera</option>
+      </select>
+    {% endif %}
+    {% if row.feature.key == "notifications.live_toggle" %}
+      <select name="enabled">
+        <option value="true">Turn on</option>
+        <option value="false">Turn off</option>
+      </select>
+    {% endif %}
+    <button type="submit" class="btn btn-primary btn-sm">Fetch Now</button>
+  </form>
+
+  {% if row.feature.supports_auto %}
+  <form method="post" action="{% url 'console:update-schedule' device.device_uuid row.feature.key %}" data-ajax-row-form class="schedule-row">
+    {% csrf_token %}
+    <label class="switch">
+      <input type="checkbox" name="enabled" {% if row.schedule.enabled %}checked{% endif %}>
+      Auto-fetch every
+    </label>
+    <input type="number" name="interval_seconds" min="30" step="30" value="{{ row.schedule.interval_seconds|default:300 }}">
+    <span>sec</span>
+    <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+  </form>
+  {% endif %}
+</div>

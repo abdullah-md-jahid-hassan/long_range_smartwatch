@@ -1,0 +1,33 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Relay Console</title>
+  <link rel="stylesheet" href="{% static 'console/css/console.css' %}">
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="dot"></span> Relay Console</div>
+      <p class="auth-sub">Staff access only — internal fleet management for Phase 1.</p>
+      {% if form.non_field_errors %}
+        <div class="form-errors">{{ form.non_field_errors|join:" " }}</div>
+      {% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="field">
+          <label for="id_username">Email</label>
+          {{ form.username }}
+        </div>
+        <div class="field">
+          <label for="id_password">Password</label>
+          {{ form.password }}
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn btn-primary auth-submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -103,6 +103,9 @@ INSTALLED_APPS = [
     'logs',
     'activity',
     'notifications',
+    'devices',
+    'device_actions',
+    'console',
 ]
 
 MIDDLEWARE = [
@@ -116,12 +119,20 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'logs.middleware.LoggingContextMiddleware',
     'activity.middleware.ActivityTrackingMiddleware',  # AFTER logs middleware — reads request.request_id
+    'devices.middleware.DeviceLivenessMiddleware',     # AFTER auth middleware — reads request.user
 ]
 
 # =========================================
 # Activity Tracking
 # =========================================
 ACTIVITY_SKIP_PATHS = ("/admin/", "/static/", "/media/", "/favicon.ico")
+
+# =========================================
+# Device Connector (see device_actions/connectors.py)
+# =========================================
+# "placeholder" until the mobile app exists to pair with; swapping to a real
+# transport (e.g. "fcm") later is the entire integration point.
+DEVICE_CONNECTOR_BACKEND = CONFIG.DEVICE_CONNECTOR_BACKEND
 
 
 # =========================================

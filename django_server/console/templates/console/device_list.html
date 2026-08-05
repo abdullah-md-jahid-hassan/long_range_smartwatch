@@ -1,0 +1,53 @@
+{% extends "console/base.html" %}
+{% block title %}Devices{% endblock %}
+{% block page_heading %}Devices{% endblock %}
+{% block content %}
+<p class="page-subtitle" style="margin-bottom:18px;">
+  Every phone registered to a user account. There is nothing to pair a device to yet besides the account itself —
+  a watch is a Phase 2 concept once its hardware and protocol are decided.
+</p>
+
+<form class="search-bar" method="get">
+  <input type="text" name="q" value="{{ query }}" placeholder="Search by label, model, or owner email">
+  <button type="submit" class="btn btn-ghost">Search</button>
+</form>
+
+<div class="panel">
+  <table class="data-table">
+    <thead>
+      <tr><th>Device</th><th>Owner</th><th>Status</th><th>Last Seen</th><th>Added</th></tr>
+    </thead>
+    <tbody>
+      {% for device in page_obj %}
+      <tr>
+        <td>
+          <a class="row-link" href="{% url 'console:device-detail' device.device_uuid %}">{{ device.display_name }}</a><br>
+          <span class="action-status-meta">{{ device.model_name|default:"Unknown model" }} · {{ device.os_version|default:"—" }}</span>
+        </td>
+        <td>{{ device.user.email }}</td>
+        <td>
+          {% if device.status == "revoked" %}
+            <span class="pill pill-danger">Revoked</span>
+          {% elif device.is_online %}
+            <span class="pill pill-success"><span class="dot dot-online"></span> Online</span>
+          {% else %}
+            <span class="pill pill-neutral"><span class="dot dot-offline"></span> Offline</span>
+          {% endif %}
+        </td>
+        <td>{% if device.last_seen_at %}{{ device.last_seen_at|timesince }} ago{% else %}Never{% endif %}</td>
+        <td>{{ device.created_at|date:"M j, Y" }}</td>
+      </tr>
+      {% empty %}
+      <tr class="empty-row"><td colspan="5">No devices registered yet — nothing shows here until the mobile app exists and a user signs in.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="pagination">
+    {% if page_obj.has_previous %}<a class="btn btn-ghost btn-sm" href="?q={{ query }}&page={{ page_obj.previous_page_number }}">Prev</a>{% endif %}
+    <span class="btn btn-sm" style="border:none; cursor:default;">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="btn btn-ghost btn-sm" href="?q={{ query }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

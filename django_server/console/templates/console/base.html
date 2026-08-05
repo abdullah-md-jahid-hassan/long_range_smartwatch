@@ -1,0 +1,49 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Console{% endblock %} · Relay Console</title>
+  <link rel="stylesheet" href="{% static 'console/css/console.css' %}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand"><span class="dot"></span> Relay Console</div>
+      <nav class="sidebar-nav">
+        <a href="{% url 'console:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
+        <a href="{% url 'console:device-list' %}" class="{% if request.resolver_match.url_name == 'device-list' or request.resolver_match.url_name == 'device-detail' %}active{% endif %}">Devices</a>
+      </nav>
+      <div class="sidebar-foot">
+        Phase 1 — software-first.<br>
+        Standing in for the watch until hardware exists.
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>{% block page_heading %}{% endblock %}</h1>
+        <div class="topbar-user">
+          {% if request.user.is_authenticated %}
+            <span>{{ request.user.email }}</span>
+            <form method="post" action="{% url 'console:logout' %}" style="margin:0;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
+            </form>
+          {% endif %}
+        </div>
+      </header>
+      <main class="content">
+        {% if messages %}
+          <ul class="flash-list">
+            {% for message in messages %}
+              <li class="flash {{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+  <script src="{% static 'console/js/console.js' %}"></script>
+</body>
+</html>
